@@ -126,7 +126,7 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> load_gltf_meshes(VulkanEn
                 vtx.color = glm::vec4(vtx.normal, 1.f);
             }
         }
-        newmesh.mesh_buffers = engine->uploadMesh(indices, vertices);
+        newmesh.mesh_buffers = engine->upload_mesh(indices, vertices);
         meshes.emplace_back(std::make_shared<MeshAsset>(std::move(newmesh)));
     }
 

@@ -20,6 +20,12 @@
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
 
+enum class MaterialPass :uint8_t {
+    MainColor,
+    Transparent,
+    Other
+};
+
 struct AllocatedImage
 {
     VkImage image;
@@ -56,6 +62,24 @@ struct GPUDrawPushConstants
 {
     glm::mat4 worldMatrix;
     VkDeviceAddress vertexBuffer;
+};
+
+struct MaterialPipeline {
+    VkPipeline pipeline;
+    VkPipelineLayout layout;
+};
+
+struct MaterialInstance {
+    MaterialPipeline* pipeline;
+    VkDescriptorSet material_set;
+    MaterialPass pass_type;
+};
+
+struct DrawContext;
+
+class IRenderable {
+
+    virtual void Draw(const glm::mat4& topMatrix, DrawContext& ctx) = 0;
 };
 
 #define VK_CHECK(x)                                                     \

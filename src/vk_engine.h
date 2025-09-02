@@ -28,15 +28,15 @@ struct DeletionQueue
 
 struct FrameData
 {
-	VkCommandPool _commandPool;
-	VkCommandBuffer _mainCommandBuffer;
-	VkSemaphore _swapchainSemaphore, _renderSemaphore;
-	VkFence _renderFence;
-	DeletionQueue _deletionQueue;
-	
+	VkCommandPool command_pool;
+	VkCommandBuffer main_command_buffer;
+	VkSemaphore swapchain_semaphore, render_semaphore;
+	VkFence render_fence;
+	DeletionQueue deletion_queue;
+	ExtendableDescriptorAllocator frame_descriptor_allocator;
 };
 
-struct ComputePushedConstants
+struct ComputePushConstants
 {
 	glm::vec4 data1;
 	glm::vec4 data2;
@@ -47,127 +47,155 @@ struct ComputePushedConstants
 struct ComputeEffect
 {
 	const char* name;
-
 	VkPipeline pipeline;
-	VkPipelineLayout pipelineLayout;
+	VkPipelineLayout pipeline_layout;
+	ComputePushConstants constants;
+};
 
-	ComputePushedConstants constants;
+struct GPUSceneData
+{
+	glm::mat4 view;
+	glm::mat4 projection;
+	glm::mat4 view_projection;
+	glm::vec4 ambient_color;
+	glm::vec4 sunlight_direction;
+	glm::vec4 sunlight_color;
+};
+
+struct RenderObject
+{
+	uint32_t index_count;
+	uint32_t first_index;
+	VkBuffer index_buffer;
+	MaterialInstance* material;
+	glm::mat4 transform;
+	VkDeviceAddress vertex_buffer_address;
 };
 
 constexpr unsigned int FRAME_OVERLAP = 2; // Number of frames we will be "inside" simultaneously
 
 class VulkanEngine {
 public:
-
-	bool _isInitialized{ false };
-	int _frameNumber {0};
-	bool stop_rendering{ false };
-	VkExtent2D _windowExtent{ 1700 , 900 };
-
-	struct SDL_Window* _window{ nullptr };
-
-	static VulkanEngine& Get();
-
-	VkInstance _instance; // Vulkan library handle
-	VkDebugUtilsMessengerEXT _debugMessenger; // Debug messenger for Vulkan
-	VkPhysicalDevice _chosenGPU; // The GPU we will use for rendering
-	VkDevice _device; // The logical device we will use for rendering
-	VkSurfaceKHR _surface; // The surface we will render to
-
-	VkSwapchainKHR _swapchain;
-	VkFormat _swapchainImageFormat;
-	
-	std::vector<VkImage> _swapchainImages;
-	std::vector<VkImageView> _swapchainImageViews;
-	VkExtent2D _swapchainExtent;
-
-	DeletionQueue _mainDeletionQueue;
-
-	VmaAllocator _allocator;
-
-	AllocatedImage _drawImage;
-	AllocatedImage _depthImage;
-	VkExtent2D _drawExtent;
-	float render_scale{1.0f};
-
-	DescriptorAllocator global_descriptor_allocator;
-
-	VkDescriptorSet _drawImageDescriptorSet;
-	VkDescriptorSetLayout _drawImageDescriptorSetLayout;
-
-	VkPipeline	_gradientPipeline;
-	VkPipelineLayout _gradientPipelineLayout;
-
-	VkFence _immFence;
-	VkCommandBuffer _immCommandBuffer;
-	VkCommandPool _immCommandPool;
-	
-	FrameData _frames[FRAME_OVERLAP];
-
-	FrameData& get_current_frame() { return _frames[_frameNumber % FRAME_OVERLAP]; };
-	
-	VkQueue _graphicsQueue;
-	uint32_t _graphicsQueueFamily;
-
-	std::vector<ComputeEffect> backgroundEffects;
-
-	VkPipelineLayout _trianglePipelineLayout;
-	VkPipeline _trianglePipeline;
-
-	VkPipelineLayout _meshPipelineLayout;
-	VkPipeline _meshPipeline;
-
-	GPUMeshBuffers rectangle;
-	
-	std::vector<std::shared_ptr<MeshAsset>> meshes;
-	
-	int currentBackgroundEffect{0};
-
+	// Core engine state
+	bool is_initialized{false};
+	int frame_number{0};
+	bool stop_rendering{false};
 	bool resize_requested{false};
 	
-	//initializes everything in the engine
-	void init();
-
-	//shuts down the engine
-	void cleanup();
-
-	//draw loop
-	void draw();
-
-	//draw background
-	void draw_background(VkCommandBuffer cmd);
-
-	//run main loop
-	void run();
-
-	// submit a command buffer for immediate submission
-	void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& func);
-
-	// draw_imgui
-	void draw_imgui(VkCommandBuffer cmd, VkImageView target_image_view);
-
-	//draw geomtry
-	void draw_geometry(VkCommandBuffer cmd);
+	// Window properties
+	VkExtent2D window_extent{1700, 900};
+	struct SDL_Window* window{nullptr};
 	
-	AllocatedBuffer create_buffer(size_t size, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
+	// Core Vulkan objects
+	VkInstance instance; // Vulkan library handle
+	VkDebugUtilsMessengerEXT debug_messenger; // Debug messenger for Vulkan
+	VkPhysicalDevice chosen_gpu; // The GPU we will use for rendering
+	VkDevice device; // The logical device we will use for rendering
+	VkSurfaceKHR surface; // The surface we will render to
+
+	// Swapchain related
+	VkSwapchainKHR swapchain;
+	VkFormat swapchain_image_format;
+	std::vector<VkImage> swapchain_images;
+	std::vector<VkImageView> swapchain_image_views;
+	VkExtent2D swapchain_extent;
+
+	// Memory management
+	DeletionQueue main_deletion_queue;
+	VmaAllocator allocator;
+
+	// Rendering resources
+	AllocatedImage draw_image;
+	AllocatedImage depth_image;
+	VkExtent2D draw_extent;
+	float render_scale{1.0f};
+
+	// Descriptors
+	DescriptorAllocator global_descriptor_allocator;
+	VkDescriptorSet draw_image_descriptor_set;
+	VkDescriptorSetLayout draw_image_descriptor_set_layout;
+
+	// Compute pipeline
+	VkPipeline gradient_pipeline;
+	VkPipelineLayout gradient_pipeline_layout;
+
+	// Immediate submit resources
+	VkFence immediate_fence;
+	VkCommandBuffer immediate_command_buffer;
+	VkCommandPool immediate_command_pool;
+	
+	// Frame data
+	FrameData frames[FRAME_OVERLAP];
+	FrameData& get_current_frame() { return frames[frame_number % FRAME_OVERLAP]; }
+
+	// Queue management
+	VkQueue graphics_queue;
+	uint32_t graphics_queue_family;
+
+	// Effects and pipelines
+	std::vector<ComputeEffect> background_effects;
+	VkPipelineLayout triangle_pipeline_layout;
+	VkPipeline triangle_pipeline;
+	VkPipelineLayout mesh_pipeline_layout;
+	VkPipeline mesh_pipeline;
+
+	// Mesh data
+	GPUMeshBuffers rectangle;
+	std::vector<std::shared_ptr<MeshAsset>> meshes;
+	int current_background_effect{0};
+
+	// Scene data
+	GPUSceneData scene_data;
+	VkDescriptorSetLayout gpu_scene_descriptor_set_layout;
+
+	// Texture
+	AllocatedImage white_image;
+	AllocatedImage black_image;
+	AllocatedImage grey_image;
+	AllocatedImage error_checkerboard_image;
+	VkSampler default_sampler_linear;
+	VkSampler default_sampler_nearest;
+	VkDescriptorSetLayout single_image_descriptor_set_layout;
+	
+	// Core engine functions
+	void init(); // initializes everything in the engine
+	void cleanup(); // shuts down the engine
+	void draw(); // draw loop
+	void run(); // run main loop
+
+	// Rendering functions
+	void draw_background(VkCommandBuffer cmd); // draw background
+	void draw_imgui(VkCommandBuffer cmd, VkImageView target_image_view); // draw_imgui
+	void draw_geometry(VkCommandBuffer cmd); // draw geometry
+	
+	// Utility functions
+	void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& func); // submit a command buffer for immediate submission
+	AllocatedBuffer create_buffer(size_t size, VkBufferUsageFlags usage, VmaMemoryUsage memory_usage);
 	void destroy_buffer(const AllocatedBuffer& buffer);
+	GPUMeshBuffers upload_mesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
 
-	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
-
+	// Pipeline initialization
 	void init_mesh_pipeline();
+
+	// Texture
+	AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+	AllocatedImage create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+	void destroy_image(const AllocatedImage& image);
 	
 private:
+	// Initialization functions
 	void init_vulkan();
 	void init_swapchain();
 	void init_commands();
 	void init_sync_structures();
-	void create_swapchain(uint32_t width, uint32_t height);
-	void destroy_swapchain();
 	void init_descriptors();
 	void init_pipelines();
 	void init_background_pipelines();
 	void init_imgui();
 	void init_default_data();
+	
+	// Swapchain management
+	void create_swapchain(uint32_t width, uint32_t height);
+	void destroy_swapchain();
 	void resize_swapchain();
 };
-
