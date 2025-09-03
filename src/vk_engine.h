@@ -4,6 +4,8 @@
 #pragma once
 
 #include <vk_types.h>
+
+#include "camera.h"
 #include "vk_loader.h"
 #include "vk_descriptors.h"
 
@@ -72,6 +74,50 @@ struct RenderObject
 	VkDeviceAddress vertex_buffer_address;
 };
 
+struct GLTF_metallic_roughness
+{
+	MaterialPipeline opaque_pipeline;
+	MaterialPipeline transparent_pipeline;
+
+	VkDescriptorSetLayout material_layout;
+
+	struct MaterialConstants
+	{
+		glm::vec4 baseColorFactor;
+		glm::vec4 metallicRoughnessFactor;
+		//padding
+		glm::vec4 extra[14];
+	};
+	struct MaterialResource
+	{
+		AllocatedImage color_image;
+		VkSampler color_sampler;
+		AllocatedImage metal_rough_image;
+		VkSampler metal_rough_sampler;
+		VkBuffer data_buffer;
+		uint32_t data_buffer_offset;
+	};
+
+	DescriptorWriter writer;
+
+	void build_pipelines(VulkanEngine* engine);
+	void clear_resources(VkDevice device);
+
+	MaterialInstance write_material(VkDevice device, MaterialPass pass, const MaterialResource& resource, ExtendableDescriptorAllocator descriptor_allocator);
+};
+
+struct DrawContext
+{
+	std::vector<RenderObject> opaque_surfaces;
+};
+
+struct MeshNode : public  Node
+{
+	std::shared_ptr<MeshAsset> mesh;
+	virtual void Draw(const glm::mat4& top_matrix, DrawContext& ctx) override;
+};
+
+
 constexpr unsigned int FRAME_OVERLAP = 2; // Number of frames we will be "inside" simultaneously
 
 class VulkanEngine {
@@ -109,9 +155,10 @@ public:
 	AllocatedImage depth_image;
 	VkExtent2D draw_extent;
 	float render_scale{1.0f};
+	 
 
 	// Descriptors
-	DescriptorAllocator global_descriptor_allocator;
+	ExtendableDescriptorAllocator global_descriptor_allocator;
 	VkDescriptorSet draw_image_descriptor_set;
 	VkDescriptorSetLayout draw_image_descriptor_set_layout;
 
@@ -156,6 +203,10 @@ public:
 	VkSampler default_sampler_linear;
 	VkSampler default_sampler_nearest;
 	VkDescriptorSetLayout single_image_descriptor_set_layout;
+
+	// Material
+	MaterialInstance default_data;
+	GLTF_metallic_roughness metallic_roughness;
 	
 	// Core engine functions
 	void init(); // initializes everything in the engine
@@ -181,6 +232,13 @@ public:
 	AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
 	AllocatedImage create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
 	void destroy_image(const AllocatedImage& image);
+
+	// Mesh
+	DrawContext main_draw_context;
+	std::unordered_map<std::string, std::shared_ptr<Node>> loaded_nodes;
+
+	// Camera
+	Camera editor_camera;
 	
 private:
 	// Initialization functions
@@ -198,4 +256,6 @@ private:
 	void create_swapchain(uint32_t width, uint32_t height);
 	void destroy_swapchain();
 	void resize_swapchain();
+
+	void update_scene();
 };

@@ -20,6 +20,7 @@
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
 
+
 enum class MaterialPass :uint8_t {
     MainColor,
     Transparent,
@@ -77,10 +78,39 @@ struct MaterialInstance {
 
 struct DrawContext;
 
+// base class for rendering dynamic objects
 class IRenderable {
 
     virtual void Draw(const glm::mat4& topMatrix, DrawContext& ctx) = 0;
 };
+
+// implementation of a drawable scene node, the scene node can hold children and will also keep a transform to propagate, to them
+struct Node : public IRenderable
+{
+    // parent pointer must be a weak pointer to avoid circular dependencies
+    std::weak_ptr<Node> parent;
+    std::vector<std::shared_ptr<Node>> children;
+
+    glm::mat4 local_transform;
+    glm::mat4 world_transform;
+
+    void refresh_transform(const glm::mat4& parent_matrix)
+    {
+        world_transform = parent_matrix * local_transform;
+        for (std::shared_ptr<Node> child : children)
+        {
+            child->refresh_transform(world_transform);
+        }
+    }
+    virtual void Draw(const glm::mat4& top_matrix, DrawContext& ctx)
+    {
+        for (std::shared_ptr<Node> child : children)
+        {
+            child->Draw(world_transform, ctx);
+        }
+    }
+};
+
 
 #define VK_CHECK(x)                                                     \
     do {                                                                \

@@ -167,8 +167,9 @@ VkDescriptorSet ExtendableDescriptorAllocator::allocate(VkDevice device, VkDescr
     // get or create a pool to allocate from
     VkDescriptorPool pool_to_use = get_pool(device);
 
-    VkDescriptorSetAllocateInfo alloc_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+    VkDescriptorSetAllocateInfo alloc_info = {};
     alloc_info.pNext = pNext;
+    alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     alloc_info.descriptorPool = pool_to_use;
     alloc_info.descriptorSetCount = 1;
     alloc_info.pSetLayouts = &layout;
